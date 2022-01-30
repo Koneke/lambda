@@ -1,25 +1,19 @@
 ﻿using System.Text;
 using System.Text.RegularExpressions;
 
-var state = new State(
-    ("x", (("y", "x"), "y")),
-    ("x", "x"),
-    "z");
-
 Repl.Start();
 
 static class Repl
 {
     private static Func<State, State> Run = (State state) =>
     {
-        var next = state.Evaluate();
-        while (next != state)
+        while (true)
         {
-            Console.WriteLine(state);
+            var next = state.Evaluate();
+            if (state == next) break;
+            Console.WriteLine($"  {next}");
             state = next;
-            next = state.Evaluate();
         }
-        Console.WriteLine(state);
         return state;
     };
 
