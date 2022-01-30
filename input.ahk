@@ -1,0 +1,1 @@
+^+l::Send {U+03BB} ; lambda
