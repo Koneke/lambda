@@ -32,7 +32,7 @@ static class Repl
             }
             catch (Exception e)
             {
-                Console.WriteLine($"Error: ${e.Message}");
+                Console.WriteLine($"Error: {e.Message}");
             }
 
             Console.WriteLine("");
@@ -190,6 +190,8 @@ abstract class Expression
         new Abstraction(abstraction.left, abstraction.right);
     public static implicit operator Expression((Abstraction left, string right) application) =>
         new Application(application.left, application.right);
+
+    public abstract Expression Beta(Symbol s, Expression e);
 }
 
 class Symbol : Expression
@@ -225,8 +227,10 @@ class Abstraction : Expression
         Replacement = replacement;
     }
 
-    private Scope inner(Scope outer, Symbol s, Expression value) =>
-        new Scope(outer.Values).Set(Symbol, value);
+    public Expression Apply(Scope outer, Expression expression) =>
+        Replacement
+            .Evaluate(Scope.inner(outer, Symbol, expression))
+            .expression;
 
     public override (Scope scope, Expression expression) Evaluate(Scope outer) =>
         (outer.Get(Symbol), Replacement) switch
@@ -238,13 +242,13 @@ class Abstraction : Expression
                     new Abstraction(
                         application.Left.Symbol,
                         application.Left.Replacement.Evaluate(
-                            inner(outer, Symbol, value)
+                            Scope.inner(outer, Symbol, value)
                         ).expression),
                     application.Left.Symbol)),
             (Expression value, _) => (
                 outer,
                 Replacement
-                    .Evaluate(inner(outer, Symbol, value))
+                    .Evaluate(Scope.inner(outer, Symbol, value))
                     .expression),
         };
 
@@ -264,10 +268,11 @@ class Application : Expression
         Right = right;
     }
 
-    public override (Scope scope, Expression expression) Evaluate(Scope scope) =>
+    public override (Scope scope, Expression expression) Evaluate(Scope outer) =>
         (Left is Abstraction abstraction)
-        ? (scope, Left.Evaluate(new Scope(scope.Values).Set(abstraction.Symbol, Right)).expression)
-        : (scope, this);
+        // ? (scope, Left.Evaluate(Scope.inner(scope, abstraction.Symbol, Right)).expression)
+        ? (outer, Left.Apply(outer, Right))
+        : (outer, this);
     public override string ToString() => $"({Left} {Right})";
 }
 
@@ -282,10 +287,22 @@ class Scope
     public Scope(Dictionary<Symbol, Expression> values) : this(values.ToArray()) { }
     public Scope() { }
 
+    public static Scope inner(Scope outer, Symbol s, Expression value) =>
+        new Scope(outer.Values).Set(s, value);
+
     public Expression? Get(Symbol s) => Values.ContainsKey(s) ? Values[s] : null;
 
     public Scope Set(Symbol s, Expression? e)
     {
+        // TODO: I think we need to check for use of symbol and rename incoming one on collision
+        //       to avoid free/bound mixups, no?
+
+        // (λx.(λy.xy) y) should be (λy.yz) (or sim. other name instead of z), not λy.yy
+        // (y in function on left is different from y being sent into it)
+
+        // e.g. [t/y] (λx.(λy.xy) y) -> (λx.(λt.xt) y) -> λt.yt
+        // see p3 https://personal.utdallas.edu/~gupta/courses/apl/lambda.pdf
+
         if (e == null) return this;
         if (Values.ContainsKey(s)) Values[s] = e;
         else Values.Add(s, e);
